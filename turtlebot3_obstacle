@@ -32,9 +32,9 @@ LIDAR_ERROR = 0.05
 SAFE_STOP_DISTANCE = STOP_DISTANCE + LIDAR_ERROR
 sum_speed = 0
 
-#Function for getting odometry reported speed
+
 def callback(data):
-        rospy.logerr("Linear speed as reported by odometer: %f", data.twist.twist.linear.x)
+        rospy.logerr("ACTUAL LINEAR SPEED: %f", data.twist.twist.linear.x)
 
 class Obstacle():
     def __init__(self,):
@@ -55,24 +55,35 @@ class Obstacle():
         samples = len(scan.ranges)  # The number of samples is defined in 
                                     # turtlebot3_<model>.gazebo.xacro file,
                                     # the default is 360.
+        samples_view = 3            # 1 <= samples_view <= samples
+        
+
+        if samples_view is 3:
+            #front_cone = 330 - 30
+            for i in range(30):
+                front_cone.append(scan.ranges[330+i])
+            for i in range(30):
+                front_cone.append(scan.ranges[i])
+            #left_cone = 300 - 330
+            #right_cone = 30 - 60
+
+            for i in range(30):
+                left_cone.append(scan.ranges[300+i])
+                right_cone.append(scan.ranges[30+i])
+
+            scan_filter.append(front_cone)
+            scan_filter.append(right_cone)
+            scan_filter.append(left_cone)
+
+        else:
+            left_lidar_samples_ranges = -(samples_view//2 + samples_view % 2)
+            right_lidar_samples_ranges = samples_view//2
             
-        #front_cone = 330 - 30
-        for i in range(30):
-            front_cone.append(scan.ranges[330+i])
-        for i in range(30):
-            front_cone.append(scan.ranges[i])
+            left_lidar_samples = scan.ranges[left_lidar_samples_ranges:]
+            right_lidar_samples = scan.ranges[:right_lidar_samples_ranges]
+            scan_filter.extend(left_lidar_samples + right_lidar_samples)
 
-        #left_cone = 300 - 330
-        #right_cone = 30 - 60
-        for i in range(30):
-            left_cone.append(scan.ranges[300+i])
-            right_cone.append(scan.ranges[30+i])
-
-        scan_filter.append(front_cone)
-        scan_filter.append(right_cone)
-        scan_filter.append(left_cone)
-
-        for i in range(3):
+        for i in range(samples_view):
             for j in range(len(scan_filter[i])):
                 if math.isnan(scan_filter[i][j]):
                     scan_filter[i][j] = 0.7
@@ -88,7 +99,7 @@ class Obstacle():
         global sum_speed
         
         if(z == 1):
-            if(min(lidar_distances[1]) <= 0.225):
+            if(min(lidar_distances[1]) <= 0.175):
                 rospy.loginfo("Turning right sharply")
                 twist.linear.x=0.20
                 twist.angular.z = 2.5
@@ -97,7 +108,7 @@ class Obstacle():
                 twist.linear.x=0.21
                 twist.angular.z = 2.25
         elif(z == -1):
-            if(min(lidar_distances[2]) <= 0.225):
+            if(min(lidar_distances[2]) <= 0.175):
                 rospy.loginfo("Turning left sharply")
                 twist.linear.x=0.20
                 twist.angular.z = -2.5
@@ -115,10 +126,10 @@ class Obstacle():
         twist = Twist()
         twist.linear.x = 0.0
         if(z == 1):
-            rospy.loginfo("Turning left")
+            rospy.loginfo("Turning right")
             twist.angular.z = 1
         elif(z == -1):
-            rospy.loginfo("Turning right")
+            rospy.loginfo("Turning left")
             twist.angular.z = -1
         
         self._cmd_pub.publish(twist)
@@ -168,12 +179,13 @@ class Obstacle():
                     while True:
                         lidar_distances = self.get_scan()
                         lidar_distances[0] = lidar_distances[0][20:-20]
-                        if max(lidar_distances[0]) > 0.25:
+                        if lidar_distances[0]> 0.25:
                             break
                         loop_counter += 1
                 else:
                     curr_velocity = self.update_speed(LINEAR_VEL, 0, lidar_distances)
 
+                
             else:
                 curr_velocity = self.update_speed(LINEAR_VEL, 0, lidar_distances)
             
